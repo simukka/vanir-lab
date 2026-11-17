@@ -42,6 +42,10 @@ data:
       bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
       static_configs:
       - targets: ["kueue-controller-manager-metrics-service.kueue-system.svc:8443"]
+    # Module 07 controller (target is down until it's deployed).
+    - job_name: eviction-notice
+      static_configs:
+      - targets: ["eviction-notice.vanir-system.svc:8080"]
 ---
 apiVersion: apps/v1
 kind: Deployment

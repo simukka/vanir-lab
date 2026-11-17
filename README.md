@@ -58,3 +58,5 @@ Helm v4.3.1, VictoriaMetrics v1.154.1, Grafana 13.2.5.
 - Strict rack placement: 32 free GPUs, largest placeable gang 8 (05).
 - Inference burst past quota took 6.5 s, preempting only spot; backfill refilled
   the gap afterwards (06).
+- An eviction-notice controller makes the real reclaim latency (31 s with a
+  30 s grace period) a metric, and gives victims a machine-readable deadline (07).

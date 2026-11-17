@@ -1,0 +1,85 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: vanir-system
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: eviction-notice
+  namespace: vanir-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: eviction-notice
+rules:
+- apiGroups: [kueue.x-k8s.io]
+  resources: [workloads]
+  verbs: [get, list, watch, patch]
+- apiGroups: [kueue.x-k8s.io]
+  resources: [localqueues, clusterqueues]
+  verbs: [get, list, watch]
+- apiGroups: [""]
+  resources: [pods]
+  verbs: [get, list, watch, patch]
+- apiGroups: [events.k8s.io]
+  resources: [events]
+  verbs: [create, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: eviction-notice
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: eviction-notice
+subjects:
+- kind: ServiceAccount
+  name: eviction-notice
+  namespace: vanir-system
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: eviction-notice
+  namespace: vanir-system
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: eviction-notice}}
+  template:
+    metadata:
+      labels: {app: eviction-notice}
+    spec:
+      serviceAccountName: eviction-notice
+      nodeSelector: {vanir.lab/role: system}
+      containers:
+      - name: manager
+        image: vanir.lab/eviction-notice:dev
+        imagePullPolicy: Never
+        args: [--poll-interval=2s]
+        ports:
+        - {name: metrics, containerPort: 8080}
+        - {name: probes, containerPort: 8081}
+        readinessProbe:
+          httpGet: {path: /readyz, port: probes}
+        livenessProbe:
+          httpGet: {path: /healthz, port: probes}
+        resources:
+          requests: {cpu: 50m, memory: 64Mi}
+          limits: {memory: 256Mi}
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities: {drop: [ALL]}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: eviction-notice
+  namespace: vanir-system
+spec:
+  selector: {app: eviction-notice}
+  ports:
+  - {name: metrics, port: 8080, targetPort: metrics}
