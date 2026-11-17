@@ -23,6 +23,7 @@ duration in their `vanir.lab/runtime` annotation (e.g. `"90s"`).
 ```bash
 make tools      # kind, kubectl, helm, kwok → ~/.local/bin (pinned, checksummed)
 make up         # cluster + fleet + JobSet + Kueue
+make obs        # VictoriaMetrics + Grafana (module 06 installs it if missing)
 make module-1   # reset, then run a module scenario (with assertions)
 make watch      # live queues / workloads / per-rack GPU map
 make down
@@ -43,4 +44,17 @@ make down
 ## Versions
 
 kind v0.33.0 (Kubernetes 1.37.0), kwok v0.8.0, Kueue 0.20.4, JobSet v0.13.0,
-Helm v4.3.1.
+Helm v4.3.1, VictoriaMetrics v1.154.1, Grafana 13.2.5.
+
+## Findings so far
+
+- Joining silos into one Kueue cohort took allocation from 56 to 120 of 128
+  GPUs with the same demand (02).
+- With fair sharing on, *share* decides victims before priority does: an
+  on-demand job lost to spot in another queue (03). Zero-quota spot queues
+  fix that (04).
+- Kueue admits the reclaiming owner at **eviction** time. With a 45 s notice
+  period the owner's pods wait Pending for 45 s on GPUs promised twice (04).
+- Strict rack placement: 32 free GPUs, largest placeable gang 8 (05).
+- Inference burst past quota took 6.5 s, preempting only spot; backfill refilled
+  the gap afterwards (06).

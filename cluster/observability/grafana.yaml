@@ -1,0 +1,78 @@
+# Grafana with anonymous admin (lab only) and VictoriaMetrics provisioned as a
+# Prometheus datasource. Dashboards come from the grafana-dashboards ConfigMap
+# (created by scripts/obs-up.sh from cluster/observability/dashboards/).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-provisioning
+  namespace: monitoring
+data:
+  datasources.yaml: |
+    apiVersion: 1
+    datasources:
+    - name: VictoriaMetrics
+      uid: vm
+      type: prometheus
+      access: proxy
+      url: http://vmsingle.monitoring.svc:8428
+      isDefault: true
+      jsonData:
+        timeInterval: 10s
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+    - name: vanir
+      folder: vanir-lab
+      type: file
+      options:
+        path: /var/lib/grafana/dashboards
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: monitoring
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: grafana}}
+  template:
+    metadata:
+      labels: {app: grafana}
+    spec:
+      nodeSelector: {vanir.lab/role: system}
+      containers:
+      - name: grafana
+        image: grafana/grafana:13.2.5
+        env:
+        - {name: GF_AUTH_ANONYMOUS_ENABLED, value: "true"}
+        - {name: GF_AUTH_ANONYMOUS_ORG_ROLE, value: Admin}
+        - {name: GF_AUTH_DISABLE_LOGIN_FORM, value: "true"}
+        - {name: GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH, value: /var/lib/grafana/dashboards/vanir.json}
+        - {name: GF_ANALYTICS_REPORTING_ENABLED, value: "false"}
+        - {name: GF_ANALYTICS_CHECK_FOR_UPDATES, value: "false"}
+        ports:
+        - {name: http, containerPort: 3000}
+        resources:
+          requests: {cpu: 100m, memory: 128Mi}
+          limits: {memory: 512Mi}
+        readinessProbe:
+          httpGet: {path: /api/health, port: http}
+        volumeMounts:
+        - {name: provisioning, mountPath: /etc/grafana/provisioning/datasources/datasources.yaml, subPath: datasources.yaml}
+        - {name: provisioning, mountPath: /etc/grafana/provisioning/dashboards/dashboards.yaml, subPath: dashboards.yaml}
+        - {name: dashboards, mountPath: /var/lib/grafana/dashboards}
+      volumes:
+      - name: provisioning
+        configMap: {name: grafana-provisioning}
+      - name: dashboards
+        configMap: {name: grafana-dashboards}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: monitoring
+spec:
+  selector: {app: grafana}
+  ports:
+  - {name: http, port: 3000, targetPort: http}

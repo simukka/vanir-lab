@@ -1,0 +1,93 @@
+# VictoriaMetrics single-node: scrapes Kueue and accepts pushed metrics from
+# lab tools (e.g. the inference autoscaler) on /api/v1/import/prometheus.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vmsingle
+  namespace: monitoring
+---
+# Kueue's metrics endpoint is behind authn/authz; the chart ships this role.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: vmsingle-kueue-metrics
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kueue-metrics-reader
+subjects:
+- kind: ServiceAccount
+  name: vmsingle
+  namespace: monitoring
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vmsingle-scrape
+  namespace: monitoring
+data:
+  scrape.yaml: |
+    global:
+      scrape_interval: 10s
+    scrape_configs:
+    - job_name: kueue
+      scheme: https
+      tls_config:
+        insecure_skip_verify: true
+      bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+      static_configs:
+      - targets: ["kueue-controller-manager-metrics-service.kueue-system.svc:8443"]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vmsingle
+  namespace: monitoring
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: vmsingle}}
+  template:
+    metadata:
+      labels: {app: vmsingle}
+    spec:
+      serviceAccountName: vmsingle
+      nodeSelector: {vanir.lab/role: system}
+      containers:
+      - name: vmsingle
+        image: victoriametrics/victoria-metrics:v1.154.1
+        args:
+        - -promscrape.config=/etc/vm/scrape.yaml
+        - -storageDataPath=/storage
+        - -retentionPeriod=2d
+        # Make just-written samples queryable at once (default hides last 30s).
+        - -search.latencyOffset=0s
+        ports:
+        - {name: http, containerPort: 8428}
+        resources:
+          requests: {cpu: 100m, memory: 128Mi}
+          limits: {memory: 512Mi}
+        readinessProbe:
+          httpGet: {path: /health, port: http}
+        volumeMounts:
+        - {name: config, mountPath: /etc/vm}
+        - {name: storage, mountPath: /storage}
+      volumes:
+      - name: config
+        configMap: {name: vmsingle-scrape}
+      - name: storage
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vmsingle
+  namespace: monitoring
+spec:
+  selector: {app: vmsingle}
+  ports:
+  - {name: http, port: 8428, targetPort: http}

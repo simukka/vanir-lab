@@ -1,10 +1,13 @@
-.PHONY: tools up down reset watch module-%
+.PHONY: tools up obs down reset watch module-%
 
 tools:
 	./scripts/install-tools.sh
 
 up:
 	./scripts/up.sh
+
+obs:
+	./scripts/obs-up.sh
 
 down:
 	./scripts/down.sh
