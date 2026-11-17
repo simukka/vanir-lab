@@ -5,6 +5,8 @@ set -euo pipefail
 CTX=kind-vanir
 LAB_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 k() { kubectl --context "$CTX" "$@"; }
+# Exported so `eventually ... bash -c "..."` checks can call k and helpers.
+export CTX; export -f k
 
 say()  { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
 pass() { printf '\033[1;32mPASS\033[0m %s\n' "$*"; }
@@ -66,10 +68,14 @@ EOF
 # for the fake pods ("90s"); omitted = runs ~forever.
 # Env knobs: GRACE=<s> eviction notice (terminationGracePeriodSeconds, default 0)
 #            MAX_EXEC=<s> Kueue max execution time before the job is evicted.
+#            TOPO=required|preferred:<node-label> Kueue TAS placement, e.g.
+#                 TOPO=required:vanir.lab/rack (all pods inside one rack).
 job() {
   local ns=$1 name=$2 queue=$3 prio=$4 pods=$5 gpus=$6 runtime=${7:-} extra=${8:-}
   local maxexec=""
   [[ -n ${MAX_EXEC:-} ]] && maxexec="kueue.x-k8s.io/max-exec-time-seconds: \"$MAX_EXEC\""
+  local topo=""
+  [[ -n ${TOPO:-} ]] && topo="kueue.x-k8s.io/podset-${TOPO%%:*}-topology: ${TOPO#*:}, "
   k apply -f - >/dev/null <<EOF
 apiVersion: batch/v1
 kind: Job
@@ -89,7 +95,7 @@ spec:
   suspend: true
   template:
     metadata:
-      annotations: {${runtime:+vanir.lab/runtime: "$runtime"}}
+      annotations: {${topo}${runtime:+vanir.lab/runtime: "$runtime"}}
     spec:
       restartPolicy: Never
       terminationGracePeriodSeconds: ${GRACE:-0}
