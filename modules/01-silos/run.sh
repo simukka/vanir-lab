@@ -10,23 +10,7 @@ say "Create four silos (128 GPUs total), each a ClusterQueue with no cohort"
 #  hpclab    16 GPUs  Slinky-style Slurm cluster: slurmd pods hold whole nodes
 for spec in acme:48 nimbus:32 serverless:32 hpclab:16; do
   name=${spec%%:*} gpus=${spec##*:}
-  k apply -f - >/dev/null <<EOF
-apiVersion: kueue.x-k8s.io/v1beta2
-kind: ClusterQueue
-metadata:
-  name: $name
-  labels: {vanir.lab/module: "$M"}
-spec:
-  namespaceSelector: {}
-  resourceGroups:
-  - coveredResources: [cpu, memory, nvidia.com/gpu]
-    flavors:
-    - name: h200
-      resources:
-      - {name: cpu, nominalQuota: "$((gpus * 16))"}
-      - {name: memory, nominalQuota: "$((gpus * 256))Gi"}
-      - {name: nvidia.com/gpu, nominalQuota: "$gpus"}
-EOF
+  cq "$name" "$gpus"
   tenant "$name"
   localqueue "$name" "$name"
 done

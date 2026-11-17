@@ -16,6 +16,41 @@ tenant() {
   k label ns "$1" vanir.lab/tenant=true --overwrite >/dev/null
 }
 
+# cq <name> <gpus> [cohort] [gpu-lending-limit] [extra-spec]
+# ClusterQueue on the h200 flavor. CPU/memory quota scale with GPUs so GPUs are
+# always the binding resource. extra-spec is top-level spec keys in YAML flow
+# style, separated by "; ", e.g.
+#   'preemption: {reclaimWithinCohort: Any}; fairSharing: {weight: "2"}'
+cq() {
+  local name=$1 gpus=$2 cohort=${3:-} lend=${4:-} extra=${5:-}
+  local lendcpu="" lendmem="" lendgpu="" nl=$'\n'
+  extra=${extra//; /${nl}  }
+  if [[ -n $lend ]]; then
+    lendcpu=", lendingLimit: \"$((lend * 16))\""
+    lendmem=", lendingLimit: \"$((lend * 256))Gi\""
+    lendgpu=", lendingLimit: \"$lend\""
+  fi
+  k apply -f - >/dev/null <<EOF
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ClusterQueue
+metadata:
+  name: $name
+  labels: {vanir.lab/module: "${M:-x}"}
+spec:
+  ${cohort:+cohortName: $cohort}
+  namespaceSelector: {}
+  ${extra}
+  resourceGroups:
+  - coveredResources: [cpu, memory, nvidia.com/gpu]
+    flavors:
+    - name: h200
+      resources:
+      - {name: cpu, nominalQuota: "$((gpus * 16))"$lendcpu}
+      - {name: memory, nominalQuota: "$((gpus * 256))Gi"$lendmem}
+      - {name: nvidia.com/gpu, nominalQuota: "$gpus"$lendgpu}
+EOF
+}
+
 # localqueue <ns> <clusterqueue>: LocalQueue named after the namespace's CQ.
 localqueue() {
   k apply -f - >/dev/null <<EOF
