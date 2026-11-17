@@ -64,8 +64,12 @@ EOF
 # job <ns> <name> <queue> <priority> <pods> <gpus-per-pod> [runtime] [extra-annotations-yaml]
 # A gang: Kueue admits all pods' GPUs at once or none. runtime is a duration
 # for the fake pods ("90s"); omitted = runs ~forever.
+# Env knobs: GRACE=<s> eviction notice (terminationGracePeriodSeconds, default 0)
+#            MAX_EXEC=<s> Kueue max execution time before the job is evicted.
 job() {
   local ns=$1 name=$2 queue=$3 prio=$4 pods=$5 gpus=$6 runtime=${7:-} extra=${8:-}
+  local maxexec=""
+  [[ -n ${MAX_EXEC:-} ]] && maxexec="kueue.x-k8s.io/max-exec-time-seconds: \"$MAX_EXEC\""
   k apply -f - >/dev/null <<EOF
 apiVersion: batch/v1
 kind: Job
@@ -75,6 +79,7 @@ metadata:
   labels:
     kueue.x-k8s.io/queue-name: $queue
     kueue.x-k8s.io/priority-class: $prio
+    $maxexec
   annotations: {$extra}
 spec:
   parallelism: $pods
@@ -87,6 +92,7 @@ spec:
       annotations: {${runtime:+vanir.lab/runtime: "$runtime"}}
     spec:
       restartPolicy: Never
+      terminationGracePeriodSeconds: ${GRACE:-0}
       containers:
       - name: worker
         image: fake.local/trainer:latest
@@ -116,6 +122,7 @@ spec:
     metadata:
       labels: {app: $name}
     spec:
+      terminationGracePeriodSeconds: ${GRACE:-0}
       containers:
       - name: server
         image: fake.local/$name:latest

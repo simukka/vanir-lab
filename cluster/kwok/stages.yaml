@@ -1,4 +1,4 @@
-# Derived from kwok v0.8.0 stage-fast.yaml; pod-complete replaced (see below).
+# Derived from kwok v0.8.0 stage-fast.yaml; pod-complete and pod-delete changed (see below).
 apiVersion: kwok.x-k8s.io/v1alpha1
 kind: Stage
 metadata:
@@ -151,6 +151,12 @@ kind: Stage
 metadata:
   name: pod-delete
 spec:
+  # Hold a terminating pod (and its GPUs) until its grace period ends, like a
+  # real kubelet waiting for a workload to checkpoint after SIGTERM.
+  delay:
+    durationMilliseconds: 0
+    durationFrom:
+      expressionFrom: .metadata.deletionTimestamp
   next:
     delete: true
   resourceRef:
