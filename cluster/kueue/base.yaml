@@ -1,0 +1,63 @@
+# Shared building blocks used by every module.
+#
+# Topology: block (IB spine domain) > rack (leaf switch / NVLink-ish domain) > host.
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: Topology
+metadata:
+  name: gpu-fabric
+spec:
+  levels:
+  - nodeLabel: vanir.lab/block
+  - nodeLabel: vanir.lab/rack
+  - nodeLabel: kubernetes.io/hostname
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ResourceFlavor
+metadata:
+  name: h200
+spec:
+  nodeLabels:
+    nvidia.com/gpu.product: NVIDIA-H200
+  # Fake fleet nodes are tainted so real system pods stay off them; every
+  # workload admitted on this flavor gets the matching toleration injected.
+  tolerations:
+  - key: kwok.x-k8s.io/node
+    operator: Exists
+    effect: NoSchedule
+  topologyName: gpu-fabric
+---
+# Priority tiers inferred from Verda's product line (highest first).
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: WorkloadPriorityClass
+metadata:
+  name: reserved
+value: 10000
+description: Committed / reserved capacity customers
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: WorkloadPriorityClass
+metadata:
+  name: inference
+value: 5000
+description: Latency-sensitive serving (serverless containers, per-token API)
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: WorkloadPriorityClass
+metadata:
+  name: on-demand
+value: 1000
+description: Pay-as-you-go training and batch
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: WorkloadPriorityClass
+metadata:
+  name: spot
+value: 100
+description: Perishable capacity, always preemptible
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: WorkloadPriorityClass
+metadata:
+  name: healthcheck
+value: 10
+description: Fleet health sweeps; queue behind everything, never preempt

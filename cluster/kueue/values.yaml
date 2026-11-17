@@ -1,0 +1,50 @@
+# Kueue Helm values for the lab (chart 0.20.4).
+controllerManager:
+  manager:
+    resources:
+      limits: {cpu: "1", memory: 512Mi}
+      requests: {cpu: 200m, memory: 256Mi}
+  nodeSelector:
+    vanir.lab/role: system
+managerConfig:
+  controllerManagerConfigYaml: |-
+    apiVersion: config.kueue.x-k8s.io/v1beta2
+    kind: Configuration
+    health:
+      healthProbeBindAddress: :8081
+    metrics:
+      bindAddress: :8443
+      # Per-ClusterQueue quota/usage gauges, used by the module 06 dashboard.
+      enableClusterQueueResources: true
+    webhook:
+      port: 9443
+    leaderElection:
+      leaderElect: true
+      resourceName: c1f6bfd2.kueue.x-k8s.io
+    controller:
+      groupKindConcurrency:
+        Job.batch: 5
+        Pod: 5
+        Workload.kueue.x-k8s.io: 10
+        LocalQueue.kueue.x-k8s.io: 5
+        Cohort.kueue.x-k8s.io: 1
+        ClusterQueue.kueue.x-k8s.io: 5
+        ResourceFlavor.kueue.x-k8s.io: 1
+    clientConnection:
+      qps: 300
+      burst: 500
+    # Only lab tenant namespaces are managed; system namespaces are ignored.
+    managedJobsNamespaceSelector:
+      matchLabels:
+        vanir.lab/tenant: "true"
+    # Fair sharing across a cohort: queues that borrowed the most are
+    # preempted first when a lender reclaims its nominal quota.
+    fairSharing:
+      preemptionStrategies: [LessThanOrEqualToFinalShare, LessThanInitialShare]
+    integrations:
+      frameworks:
+      - "batch/job"
+      - "jobset.x-k8s.io/jobset"
+      - "pod"
+      - "deployment"
+      - "statefulset"
